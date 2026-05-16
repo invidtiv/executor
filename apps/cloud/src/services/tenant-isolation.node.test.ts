@@ -3,24 +3,35 @@
 // on the full cloud module graph.
 
 import { describe, expect, it } from "@effect/vitest";
-import { Effect, Result } from "effect";
+import { Effect, Result, Schema } from "effect";
+import { HttpApi, HttpApiEndpoint, HttpApiGroup, OpenApi } from "effect/unstable/httpapi";
 
 import { ConnectionId, ScopeId, SecretId } from "@executor-js/sdk";
+import { makeOpenApiHttpApiTestAddSpecPayload } from "@executor-js/plugin-openapi/testing";
 
 import { asOrg } from "./__test-harness__/api-harness";
 
-const MINIMAL_OPENAPI_SPEC = JSON.stringify({
-  openapi: "3.0.0",
-  info: { title: "Tenant Test API", version: "1.0.0" },
-  paths: {
-    "/ping": {
-      get: {
-        operationId: "ping",
-        responses: { "200": { description: "ok" } },
-      },
-    },
-  },
-});
+const PingGroup = HttpApiGroup.make("default", { topLevel: true }).add(
+  HttpApiEndpoint.get("ping", "/ping", { success: Schema.Unknown }),
+);
+
+const TenantIsolationApi = HttpApi.make("tenantIsolationTest")
+  .add(PingGroup)
+  .annotateMerge(OpenApi.annotations({ title: "Tenant Test API", version: "1.0.0" }));
+
+const makeTenantOpenApiSourcePayload = (
+  targetScope: ScopeId,
+  namespace: string,
+  options: Omit<
+    Parameters<typeof makeOpenApiHttpApiTestAddSpecPayload>[1],
+    "targetScope" | "namespace"
+  > = {},
+) =>
+  makeOpenApiHttpApiTestAddSpecPayload(TenantIsolationApi, {
+    targetScope,
+    namespace,
+    ...options,
+  });
 
 describe("tenant isolation (HTTP)", () => {
   it.effect("write requests cannot target another org scope", () =>
@@ -105,11 +116,7 @@ describe("tenant isolation (HTTP)", () => {
       yield* asOrg(orgA, (client) =>
         client.openapi.addSpec({
           params: { scopeId: ScopeId.make(orgA) },
-          payload: {
-            targetScope: ScopeId.make(orgA),
-            spec: MINIMAL_OPENAPI_SPEC,
-            namespace: namespaceA,
-          },
+          payload: makeTenantOpenApiSourcePayload(ScopeId.make(orgA), namespaceA),
         }),
       );
 
@@ -129,11 +136,7 @@ describe("tenant isolation (HTTP)", () => {
       yield* asOrg(orgA, (client) =>
         client.openapi.addSpec({
           params: { scopeId: ScopeId.make(orgA) },
-          payload: {
-            targetScope: ScopeId.make(orgA),
-            spec: MINIMAL_OPENAPI_SPEC,
-            namespace: namespaceA,
-          },
+          payload: makeTenantOpenApiSourcePayload(ScopeId.make(orgA), namespaceA),
         }),
       );
 
@@ -156,11 +159,7 @@ describe("tenant isolation (HTTP)", () => {
       yield* asOrg(orgA, (client) =>
         client.openapi.addSpec({
           params: { scopeId: ScopeId.make(orgA) },
-          payload: {
-            targetScope: ScopeId.make(orgA),
-            spec: MINIMAL_OPENAPI_SPEC,
-            namespace: namespaceA,
-          },
+          payload: makeTenantOpenApiSourcePayload(ScopeId.make(orgA), namespaceA),
         }),
       );
 
@@ -260,9 +259,7 @@ describe("tenant isolation (HTTP)", () => {
           yield* client.openapi.addSpec({
             params: { scopeId: ScopeId.make(orgA) },
             payload: {
-              targetScope: ScopeId.make(orgA),
-              spec: MINIMAL_OPENAPI_SPEC,
-              namespace: namespaceA,
+              ...makeTenantOpenApiSourcePayload(ScopeId.make(orgA), namespaceA),
               headers: {
                 Authorization: {
                   kind: "binding",
@@ -307,9 +304,7 @@ describe("tenant isolation (HTTP)", () => {
           yield* client.openapi.addSpec({
             params: { scopeId: ScopeId.make(orgA) },
             payload: {
-              targetScope: ScopeId.make(orgA),
-              spec: MINIMAL_OPENAPI_SPEC,
-              namespace: namespaceA,
+              ...makeTenantOpenApiSourcePayload(ScopeId.make(orgA), namespaceA),
               headers: {
                 Authorization: {
                   kind: "binding",
@@ -351,25 +346,19 @@ describe("tenant isolation (HTTP)", () => {
       yield* asOrg(orgA, (client) =>
         client.openapi.addSpec({
           params: { scopeId: ScopeId.make(orgA) },
-          payload: {
-            targetScope: ScopeId.make(orgA),
-            spec: MINIMAL_OPENAPI_SPEC,
-            namespace,
+          payload: makeTenantOpenApiSourcePayload(ScopeId.make(orgA), namespace, {
             name: "Org A API",
             baseUrl: "https://org-a.example.com",
-          },
+          }),
         }),
       );
       yield* asOrg(orgB, (client) =>
         client.openapi.addSpec({
           params: { scopeId: ScopeId.make(orgB) },
-          payload: {
-            targetScope: ScopeId.make(orgB),
-            spec: MINIMAL_OPENAPI_SPEC,
-            namespace,
+          payload: makeTenantOpenApiSourcePayload(ScopeId.make(orgB), namespace, {
             name: "Org B API",
             baseUrl: "https://org-b.example.com",
-          },
+          }),
         }),
       );
 
